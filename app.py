@@ -19,14 +19,6 @@ TAGS_PATH = os.path.join(DATA_DIR, "tags.csv")
 CAMPOS_CONTATO = ["id", "nome", "sobrenome", "email", "numero",
                   "tags", "observacoes", "data_adicao"]
 
-TAGS_PADRAO = [
-    {"id": "t1", "nome": "Investidor", "tipo": "perfil"},
-    {"id": "t2", "nome": "Cliente", "tipo": "perfil"},
-    {"id": "t3", "nome": "Incorporadora/Administradora", "tipo": "perfil"},
-    {"id": "t4", "nome": "Lançamento Q1", "tipo": "campanha"},
-    {"id": "t5", "nome": "Outreach 2026", "tipo": "campanha"}
-]
-
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
 lock = threading.Lock()
@@ -43,8 +35,6 @@ def init_csv():
         with open(TAGS_PATH, "w", newline="", encoding="utf-8-sig") as f:
             w = csv.DictWriter(f, fieldnames=["id", "nome", "tipo"])
             w.writeheader()
-            w.writerows(TAGS_PADRAO)
-
 
 def ler_contatos():
     init_csv()
