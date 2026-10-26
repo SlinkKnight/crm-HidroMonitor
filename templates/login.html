@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CRM · Entrar</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="login-pag">
+    <form class="login" method="post">
+      <div class="logo">CRM<span>.</span></div>
+      <p>Entre para acessar seus contatos.</p>
+      {% if erro %}<div class="erro">{{ erro }}</div>{% endif %}
+      <div class="campo">
+        <label for="usuario">Usuário</label>
+        <input id="usuario" name="usuario" autofocus required>
+      </div>
+      <div class="campo">
+        <label for="senha">Senha</label>
+        <input id="senha" name="senha" type="password" required>
+      </div>
+      <button class="btn azul" type="submit">Entrar</button>
+    </form>
+  </div>
+</body>
+</html>

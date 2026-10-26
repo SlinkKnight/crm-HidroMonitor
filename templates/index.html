@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HidroMonitor · CRM</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topo">
+    <div class="logo-container">
+      <img src="static\logoHidromonitor.png" height="40" width="40" alt="LOGO">
+      <div class="logo-text">
+        <span class="brand-hidro">Hidro</span><span class="brand-monitor">Monitor</span>
+        <span class="brand-dot">•</span>
+        <span class="brand-crm">CRM</span>
+      </div>
+    </div>
+    <a href="{{ url_for('logout') }}">Sair</a>
+  </header>
+
+  <main class="wrap">
+    <div class="acoes">
+      <input class="busca" id="busca" placeholder="Buscar por nome, e-mail, número ou tag…">
+      <button class="btn" id="novo">+ Adicionar contato</button>
+      <button class="btn sec" id="btn-gerenciar-tags">Gerenciar Tags</button>
+    </div>
+
+    <div class="cartao">
+      <table>
+        <thead>
+          <tr>
+            <th>Contato</th>
+            <th class="esconde-m">Número</th>
+            <th>Tags</th>
+            <th class="esconde-m">Observações</th>
+            <th class="esconde-m">Adicionado</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="corpo"></tbody>
+      </table>
+      <div class="vazio" id="vazio" hidden>Nenhum contato encontrado.</div>
+    </div>
+  </main>
+
+  <!-- Modal Contato -->
+  <div class="fundo" id="fundo">
+    <form class="modal" id="form">
+      <h2 id="titulo">Adicionar contato</h2>
+      <div class="grade">
+        <div><label for="nome">Nome *</label><input id="nome" required></div>
+        <div><label for="sobrenome">Sobrenome</label><input id="sobrenome"></div>
+        <div><label for="email">E-mail</label><input id="email" type="email"></div>
+        <div><label for="numero">Número</label><input id="numero" type="tel"></div>
+        
+        <div class="full">
+          <label>Tags de Perfil</label>
+          <div class="checkbox-group" id="container-tags-perfil"></div>
+        </div>
+
+        <div class="full">
+          <label>Tags de Campanha</label>
+          <div class="checkbox-group" id="container-tags-campanha"></div>
+        </div>
+
+        <div class="full"><label for="observacoes">Observações</label><textarea id="observacoes"></textarea></div>
+      </div>
+      <div class="rodape">
+        <button type="button" class="btn sec" id="cancelar">Cancelar</button>
+        <button type="submit" class="btn azul">Salvar</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Modal Gerenciar Tags -->
+  <div class="fundo" id="fundo-tags">
+    <div class="modal">
+      <h2>Gerenciar Tags</h2>
+      <form id="form-criar-tag" class="grade">
+        <div>
+          <label for="nova-tag-nome">Nome da Tag *</label>
+          <input id="nova-tag-nome" required placeholder="Ex: Black Friday">
+        </div>
+        <div>
+          <label for="nova-tag-tipo">Categoria *</label>
+          <select id="nova-tag-tipo">
+            <option value="perfil">Perfil</option>
+            <option value="campanha">Campanha</option>
+          </select>
+        </div>
+        <div class="full">
+          <button type="submit" class="btn azul" style="width: 100%;">Criar Tag</button>
+        </div>
+      </form>
+      <div class="rodape">
+        <button type="button" class="btn sec" id="fechar-tags">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+let contatos = [];
+let tags = [];
+let editando = null;
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
+  (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+async function api(url, opt = {}) {
+  const r = await fetch(url, {
+    headers: {"Content-Type": "application/json"}, ...opt
+  });
+  return r.json();
+}
+
+async function carregar() {
+  [contatos, tags] = await Promise.all([
+    api("/api/contatos"),
+    api("/api/tags")
+  ]);
+  desenhar();
+}
+
+function desenhar() {
+  const q = $("busca").value.toLowerCase();
+
+  // Filtragem exclusivamente via barra de pesquisa
+  const lista = contatos.filter(c => {
+    return !q || Object.values(c).join(" ").toLowerCase().includes(q);
+  });
+
+  $("vazio").hidden = lista.length > 0;
+  $("corpo").innerHTML = lista.map(c => {
+    const tagList = (c.tags || "").split(",").filter(Boolean).map(tName => {
+      const tagObj = tags.find(t => t.nome.toLowerCase() === tName.trim().toLowerCase());
+      const tipoClass = tagObj ? tagObj.tipo : "perfil";
+      return `<span class="tag ${tipoClass}">${esc(tName.trim())}</span>`;
+    }).join(" ");
+
+    return `
+      <tr>
+        <td><strong>${esc(c.nome)} ${esc(c.sobrenome)}</strong><br><span class="mono">${esc(c.email)}</span></td>
+        <td class="esconde-m">${esc(c.numero)}</td>
+        <td>${tagList || '<span class="mono">-</span>'}</td>
+        <td class="esconde-m">${esc(c.observacoes)}</td>
+        <td class="esconde-m mono">${esc(c.data_adicao)}</td>
+        <td><div class="linha-acoes">
+          <button class="btn sec" data-ed="${esc(c.id)}">Editar</button>
+          <button class="btn perigo" data-del="${esc(c.id)}">Excluir</button>
+        </div></td>
+      </tr>`;
+  }).join("");
+
+  document.querySelectorAll("[data-ed]").forEach(b => b.onclick = () => abrir(b.dataset.ed));
+  document.querySelectorAll("[data-del]").forEach(b => b.onclick = () => excluir(b.dataset.del));
+}
+
+function renderCheckboxesTags(cTags = []) {
+  const selected = cTags.split(",").map(t => t.trim());
+
+  const renderGroup = (tipo, elId) => {
+    $(elId).innerHTML = tags.filter(t => t.tipo === tipo).map(t => `
+      <label class="check-item">
+        <input type="checkbox" name="tag-select" value="${esc(t.nome)}" ${selected.includes(t.nome) ? "checked" : ""}>
+        ${esc(t.nome)}
+      </label>
+    `).join("");
+  };
+
+  renderGroup("perfil", "container-tags-perfil");
+  renderGroup("campanha", "container-tags-campanha");
+}
+
+function abrir(id = null) {
+  editando = id;
+  const c = contatos.find(x => x.id === id) || {};
+  $("titulo").textContent = id ? "Editar contato" : "Adicionar contato";
+  for (const k of ["nome","sobrenome","email","numero","observacoes"]) $(k).value = c[k] || "";
+  renderCheckboxesTags(c.tags || "");
+  $("fundo").classList.add("aberto");
+  $("nome").focus();
+}
+
+const fechar = () => $("fundo").classList.remove("aberto");
+
+async function excluir(id) {
+  if (!confirm("Excluir este contato?")) return;
+  await api("/api/contatos/" + id, {method: "DELETE"});
+  carregar();
+}
+
+$("novo").onclick = () => abrir();
+$("cancelar").onclick = fechar;
+$("fundo").onclick = (e) => { if (e.target.id === "fundo") fechar(); };
+
+$("btn-gerenciar-tags").onclick = () => $("fundo-tags").classList.add("aberto");
+$("fechar-tags").onclick = () => $("fundo-tags").classList.remove("aberto");
+
+$("busca").oninput = desenhar;
+
+$("form").onsubmit = async (e) => {
+  e.preventDefault();
+  const selecionadas = Array.from(document.querySelectorAll('input[name="tag-select"]:checked')).map(cb => cb.value);
+  const corpo = { tags: selecionadas.join(",") };
+  for (const k of ["nome","sobrenome","email","numero","observacoes"]) corpo[k] = $(k).value;
+
+  const r = await api(editando ? "/api/contatos/" + editando : "/api/contatos",
+    {method: editando ? "PUT" : "POST", body: JSON.stringify(corpo)});
+  if (r && r.erro) { alert(r.erro); return; }
+  fechar();
+  carregar();
+};
+
+$("form-criar-tag").onsubmit = async (e) => {
+  e.preventDefault();
+  const nome = $("nova-tag-nome").value;
+  const tipo = $("nova-tag-tipo").value;
+  const r = await api("/api/tags", {method: "POST", body: JSON.stringify({nome, tipo})});
+  if (r && r.erro) { alert(r.erro); return; }
+  $("nova-tag-nome").value = "";
+  carregar();
+};
+
+carregar();
+</script>
+</body>
+</html>
