@@ -1,5 +1,22 @@
 @import url('https://fonts.googleapis.com/css2?family=Georama:wght@700;800&family=Inter:wght@400;500;600;700&display=swap');
 
+/* Fonte da marca: XXII Geom Bold.
+   Coloque o arquivo em static/fonts/ como XXIIGeom-Bold.woff2 (ou .woff/.otf/.ttf).
+   Se ela estiver instalada no computador, também é achada pelo nome.
+   Sem o arquivo, cai em Poppins Bold (incluída, de desenho geométrico parecido). */
+@font-face {
+  font-family: "XXII Geom";
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  src: local("XXII Geom Bold"), local("XXIIGeom-Bold"), local("XXII Geom"),
+       url("fonts/XXIIGeom-Bold.woff2") format("woff2"),
+       url("fonts/XXIIGeom-Bold.woff") format("woff"),
+       url("fonts/XXIIGeom-Bold.otf") format("opentype"),
+       url("fonts/XXIIGeom-Bold.ttf") format("truetype"),
+       url("fonts/Poppins-Bold.ttf") format("truetype");
+}
+
 :root {
   --profundo: #123B8C;
   --fluxo: #229BF0;
@@ -38,10 +55,12 @@ height: 44px;
 object-fit: contain;
 }
 
-.topo .logo-text {
-  /* Fallback para XXII Geom Bold utilizando Georama com peso extra-bold */
-  font-family: "Outfit", system-ui, sans-serif;
-  font-weight: 800; font-size: 20px; letter-spacing: -0.2px;
+.topo .logo-img { height: 44px; width: auto; display: block; }
+
+.logo-text {
+  font-family: "XXII Geom", "Poppins", system-ui, sans-serif;
+  font-weight: 700; font-size: 22px; letter-spacing: -0.2px; line-height: 1;
+  white-space: nowrap;
 }
 .topo .brand-hidro { color: #f3f3f3; -webkit-text-stroke: 0.5px #ffffff; color: #ffffff; }
 .topo .brand-dot { color: #fff; margin: 0 4px; opacity: 0.6; }
@@ -102,12 +121,21 @@ th {
 td { padding: 13px 16px; border-bottom: 1px solid #EEF3FA; font-size: 14px; vertical-align: top; }
 tr:last-child td { border-bottom: 0; }
 
+/* sistema de cores das tags: --bg fundo suave, --fg texto, --solid cor cheia */
+.c-azul     { --bg: #DCE6F8; --fg: #123B8C; --solid: #123B8C; }
+.c-ciano    { --bg: #DDF0FE; --fg: #0F5C99; --solid: #229BF0; }
+.c-ambar    { --bg: #FFF0CC; --fg: #7A4F00; --solid: #FFB020; }
+.c-verde    { --bg: #DDF5E6; --fg: #146C3B; --solid: #1F9D55; }
+.c-vermelho { --bg: #FDE4E1; --fg: #A32A1D; --solid: #D64534; }
+.c-roxo     { --bg: #ECE5FA; --fg: #5B32A8; --solid: #7C4DCC; }
+.c-teal     { --bg: #D9F3F1; --fg: #0B6B66; --solid: #14A39B; }
+.c-cinza    { --bg: #E8EDF4; --fg: #3E4C63; --solid: #6B7A90; }
+
 .tag {
   display: inline-block; padding: 3px 10px; border-radius: 999px;
   font-size: 12px; font-weight: 600; margin: 2px;
+  background: var(--bg, #E8EDF4); color: var(--fg, #3E4C63);
 }
-.tag.perfil { background: #DDF0FE; color: #0F5C99; }
-.tag.campanha { background: #FFF3D6; color: #8A5A00; }
 
 .mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: var(--suave); }
 .vazio { padding: 48px; text-align: center; color: var(--suave); }
@@ -139,10 +167,47 @@ label { display: block; font-size: 13px; color: var(--suave); margin-bottom: 4px
   padding: 10px; border-radius: 9px; max-height: 120px; overflow-y: auto;
 }
 .check-item {
-  display: flex; align-items: center; gap: 6px; font-size: 13px;
-  background: var(--nevoa); padding: 4px 8px; border-radius: 6px; cursor: pointer;
+  display: flex; align-items: center; gap: 6px; font-size: 13px; margin: 0;
+  background: #fff; color: var(--suave); border: 1px solid var(--borda);
+  padding: 4px 10px; border-radius: 999px; cursor: pointer;
 }
-.check-item input { width: auto; }
+.check-item input { width: auto; accent-color: var(--solid, var(--profundo)); }
+.check-item:has(input:focus-visible), .swatch:focus-visible {
+  outline: 2px solid var(--fluxo); outline-offset: 2px;
+}
+.check-item:has(input:checked) {
+  background: var(--bg); color: var(--fg); border-color: var(--solid); font-weight: 600;
+}
+
+/* gerenciar tags */
+.nova-tag { margin-bottom: 18px; }
+.nova-tag-linha { display: flex; gap: 8px; margin-bottom: 10px; }
+.nova-tag-linha input { flex: 1; }
+.sub { font-size: 13px; text-transform: uppercase; letter-spacing: .6px; color: var(--suave); margin-bottom: 8px; }
+.swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+.swatch {
+  width: 24px; height: 24px; border-radius: 50%; border: 2px solid #fff;
+  background: var(--solid); cursor: pointer; padding: 0;
+  box-shadow: 0 0 0 1px var(--borda);
+}
+.swatch.on { box-shadow: 0 0 0 2px var(--texto); }
+.swatches.pequeno { gap: 5px; }
+.swatches.pequeno .swatch { width: 16px; height: 16px; border-width: 1px; }
+.lista-tags { border: 1px solid var(--borda); border-radius: 10px; max-height: 280px; overflow-y: auto; }
+.tag-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 9px 12px; border-bottom: 1px solid #EEF3FA;
+}
+.tag-row:last-child { border-bottom: 0; }
+.tag-info { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.tag-info .tag { margin: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag-row .btn { padding: 5px 10px; font-size: 12px; flex: none; }
+.tag-row .swatches { flex: none; }
+@media (max-width: 520px) {
+  .tag-row { flex-wrap: wrap; }
+  .tag-info { flex-basis: 100%; }
+}
+.lista-tags .vazio { padding: 20px; }
 
 .rodape { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 
@@ -158,16 +223,46 @@ label { display: block; font-size: 13px; color: var(--suave); margin-bottom: 4px
   font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px;
 }
 
-/* login */
-.login-pag { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
+/* login: painel da marca à esquerda, formulário à direita */
+.login-pag { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.login-marca {
+  background: var(--profundo); color: #fff; padding: 48px;
+  display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 28px;
+  position: relative; overflow: hidden;
+}
+.login-marca::after {            /* curva de assinatura, em azul fluxo */
+  content: ""; position: absolute; right: -140px; bottom: -140px;
+  width: 380px; height: 380px; border-radius: 50%;
+  border: 44px solid var(--fluxo); opacity: .25;
+}
+.login-logo img { height: 84px; width: auto; display: block; }
+.login-marca .logo-text { font-size: 40px; }
+.login-marca .brand-hidro { color: #fff; }
+.login-marca .brand-monitor { color: #fff; }
+.login-marca .brand-dot { color: var(--fluxo); margin: 0 8px; }
+.login-marca .brand-crm { color: var(--ambar); }
+.login-marca p { margin: 0; max-width: 340px; color: #C9D9F3; font-size: 16px; line-height: 1.5; position: relative; z-index: 1; }
+
+.login-form { display: grid; place-items: center; padding: 32px 24px; background: var(--nevoa); }
 .login {
   background: #fff; border: 1px solid var(--borda); border-radius: 16px;
-  padding: 32px; width: 100%; max-width: 360px;
+  padding: 32px; width: 100%; max-width: 380px;
 }
-.login p { color: var(--suave); margin: 0 0 20px; font-size: 14px; }
+.login h1 { font-size: 22px; color: var(--profundo); margin-bottom: 4px; }
+.login .sub-login { color: var(--suave); margin: 0 0 22px; font-size: 14px; }
 .login .campo { margin-bottom: 14px; }
-.login .btn { width: 100%; }
+.login input:focus { outline: 2px solid var(--fluxo); outline-offset: -1px; }
+.login .btn { width: 100%; margin-top: 6px; }
+.login .btn:focus-visible { outline: 3px solid var(--fluxo); outline-offset: 2px; }
 .erro { background: #FDECEA; color: #B42318; padding: 9px 12px; border-radius: 9px; margin-bottom: 14px; font-size: 14px; }
+
+@media (max-width: 820px) {
+  .login-pag { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .login-marca { padding: 28px 24px; flex-direction: row; align-items: center; gap: 14px; }
+  .login-marca p, .login-marca::after { display: none; }
+  .login-logo img { height: 40px; }
+  .login-marca .logo-text { font-size: 22px; }
+}
 
 @media (max-width: 720px) {
   .esconde-m { display: none; }

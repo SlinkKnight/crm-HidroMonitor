@@ -9,7 +9,7 @@
 <body>
   <header class="topo">
     <div class="logo-container">
-      <img src="static\logoHidromonitor.png" height="40" width="40" alt="LOGO">
+      <img class="logo-img" src="{{ url_for('static', filename='logoHidromonitor.png') }}" alt="HidroMonitor">
       <div class="logo-text">
         <span class="brand-hidro">Hidro</span><span class="brand-monitor">Monitor</span>
         <span class="brand-dot">•</span>
@@ -52,16 +52,11 @@
         <div><label for="nome">Nome *</label><input id="nome" required></div>
         <div><label for="sobrenome">Sobrenome</label><input id="sobrenome"></div>
         <div><label for="email">E-mail</label><input id="email" type="email"></div>
-        <div><label for="numero">Número</label><input id="numero" type="tel"></div>
+        <div><label for="numero">Número</label><input id="numero" type="tel" inputmode="tel" maxlength="19" placeholder="(51) 99999-0000" autocomplete="off"></div>
         
         <div class="full">
-          <label>Tags de Perfil</label>
-          <div class="checkbox-group" id="container-tags-perfil"></div>
-        </div>
-
-        <div class="full">
-          <label>Tags de Campanha</label>
-          <div class="checkbox-group" id="container-tags-campanha"></div>
+          <label>Tags</label>
+          <div class="checkbox-group" id="container-tags"></div>
         </div>
 
         <div class="full"><label for="observacoes">Observações</label><textarea id="observacoes"></textarea></div>
@@ -77,22 +72,17 @@
   <div class="fundo" id="fundo-tags">
     <div class="modal">
       <h2>Gerenciar Tags</h2>
-      <form id="form-criar-tag" class="grade">
-        <div>
-          <label for="nova-tag-nome">Nome da Tag *</label>
-          <input id="nova-tag-nome" required placeholder="Ex: Black Friday">
+      <form id="form-criar-tag" class="nova-tag">
+        <label for="nova-tag-nome">Nova tag</label>
+        <div class="nova-tag-linha">
+          <input id="nova-tag-nome" required maxlength="40" placeholder="Ex: Investidor, Black Friday">
+          <button type="submit" class="btn azul">Criar</button>
         </div>
-        <div>
-          <label for="nova-tag-tipo">Categoria *</label>
-          <select id="nova-tag-tipo">
-            <option value="perfil">Perfil</option>
-            <option value="campanha">Campanha</option>
-          </select>
-        </div>
-        <div class="full">
-          <button type="submit" class="btn azul" style="width: 100%;">Criar Tag</button>
-        </div>
+        <div class="swatches" id="cores-nova" role="radiogroup" aria-label="Cor da tag"></div>
       </form>
+
+      <h3 class="sub">Tags existentes</h3>
+      <div id="lista-tags" class="lista-tags"></div>
       <div class="rodape">
         <button type="button" class="btn sec" id="fechar-tags">Fechar</button>
       </div>
@@ -100,9 +90,11 @@
   </div>
 
 <script>
+const PALETA = {{ paleta|tojson }};
 let contatos = [];
 let tags = [];
 let editando = null;
+let corNova = PALETA[0];
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
@@ -121,7 +113,31 @@ async function carregar() {
     api("/api/tags")
   ]);
   desenhar();
+  renderGerenciarTags();
 }
+
+/* Formata telefone enquanto digita: (51) 99999-0000, (51) 3333-4444 ou +55 (51) 99999-0000 */
+function formatarNumero(v) {
+  v = String(v || "");
+  let d = v.replace(/\D/g, "");
+  let prefixo = "";
+  if (v.trim().startsWith("+")) {
+    if (!d.startsWith("55")) return "+" + d.slice(0, 15);   // número de outro país: não mexe
+    prefixo = "+55 "; d = d.slice(2);
+  }
+  d = d.slice(0, 11);
+  if (!d) return prefixo.trim();
+  const ddd = d.slice(0, 2), r = d.slice(2);
+  let s;
+  if (d.length <= 2) s = "(" + d;
+  else if (d.length <= 6) s = `(${ddd}) ${r}`;
+  else if (d.length <= 10) s = `(${ddd}) ${r.slice(0, 4)}-${r.slice(4)}`;
+  else s = `(${ddd}) ${r.slice(0, 5)}-${r.slice(5)}`;
+  return prefixo + s;
+}
+
+const nomesDe = (c) => (c.tags || "").split(",").map(t => t.trim()).filter(Boolean);
+const corDe = (nome) => (tags.find(t => t.nome.toLowerCase() === nome.toLowerCase()) || {}).cor || "cinza";
 
 function desenhar() {
   const q = $("busca").value.toLowerCase();
@@ -133,16 +149,13 @@ function desenhar() {
 
   $("vazio").hidden = lista.length > 0;
   $("corpo").innerHTML = lista.map(c => {
-    const tagList = (c.tags || "").split(",").filter(Boolean).map(tName => {
-      const tagObj = tags.find(t => t.nome.toLowerCase() === tName.trim().toLowerCase());
-      const tipoClass = tagObj ? tagObj.tipo : "perfil";
-      return `<span class="tag ${tipoClass}">${esc(tName.trim())}</span>`;
-    }).join(" ");
+    const tagList = nomesDe(c).map(n =>
+      `<span class="tag c-${corDe(n)}">${esc(n)}</span>`).join(" ");
 
     return `
       <tr>
         <td><strong>${esc(c.nome)} ${esc(c.sobrenome)}</strong><br><span class="mono">${esc(c.email)}</span></td>
-        <td class="esconde-m">${esc(c.numero)}</td>
+        <td class="esconde-m">${esc(formatarNumero(c.numero))}</td>
         <td>${tagList || '<span class="mono">-</span>'}</td>
         <td class="esconde-m">${esc(c.observacoes)}</td>
         <td class="esconde-m mono">${esc(c.data_adicao)}</td>
@@ -157,20 +170,52 @@ function desenhar() {
   document.querySelectorAll("[data-del]").forEach(b => b.onclick = () => excluir(b.dataset.del));
 }
 
-function renderCheckboxesTags(cTags = []) {
-  const selected = cTags.split(",").map(t => t.trim());
+function renderCheckboxesTags(cTags = "") {
+  const selected = cTags.split(",").map(t => t.trim().toLowerCase());
+  $("container-tags").innerHTML = tags.length ? tags.map(t => `
+    <label class="check-item c-${esc(t.cor)}">
+      <input type="checkbox" name="tag-select" value="${esc(t.nome)}" ${selected.includes(t.nome.toLowerCase()) ? "checked" : ""}>
+      ${esc(t.nome)}
+    </label>
+  `).join("") : `<span class="mono">Nenhuma tag criada. Use "Gerenciar Tags".</span>`;
+}
 
-  const renderGroup = (tipo, elId) => {
-    $(elId).innerHTML = tags.filter(t => t.tipo === tipo).map(t => `
-      <label class="check-item">
-        <input type="checkbox" name="tag-select" value="${esc(t.nome)}" ${selected.includes(t.nome) ? "checked" : ""}>
-        ${esc(t.nome)}
-      </label>
-    `).join("");
-  };
+/* ---- gerenciar tags: criar, trocar cor, excluir ---- */
+function swatches(atual, attr) {
+  return PALETA.map(c => `
+    <button type="button" class="swatch c-${c} ${c === atual ? "on" : ""}" ${attr}="${c}"
+            role="radio" aria-checked="${c === atual}" title="${c}"></button>`).join("");
+}
 
-  renderGroup("perfil", "container-tags-perfil");
-  renderGroup("campanha", "container-tags-campanha");
+function renderGerenciarTags() {
+  $("cores-nova").innerHTML = swatches(corNova, "data-nova");
+  $("cores-nova").querySelectorAll("[data-nova]").forEach(b => b.onclick = () => {
+    corNova = b.dataset.nova;
+    renderGerenciarTags();
+  });
+
+  $("lista-tags").innerHTML = tags.length ? tags.map(t => `
+    <div class="tag-row">
+      <div class="tag-info">
+        <span class="tag c-${esc(t.cor)}">${esc(t.nome)}</span>
+        <span class="mono">${t.contatos || 0} contato${t.contatos === 1 ? "" : "s"}</span>
+      </div>
+      <div class="swatches pequeno">${swatches(t.cor, `data-cor="${esc(t.id)}" data-v`)}</div>
+      <button type="button" class="btn perigo" data-deltag="${esc(t.id)}">Excluir</button>
+    </div>`).join("") : `<div class="vazio">Nenhuma tag ainda.</div>`;
+
+  document.querySelectorAll("[data-cor]").forEach(b => b.onclick = async () => {
+    await api("/api/tags/" + b.dataset.cor, {method: "PUT", body: JSON.stringify({cor: b.dataset.v})});
+    carregar();
+  });
+  document.querySelectorAll("[data-deltag]").forEach(b => b.onclick = async () => {
+    const t = tags.find(x => x.id === b.dataset.deltag);
+    const n = t.contatos || 0;
+    const aviso = n ? ` Ela será removida de ${n} contato${n === 1 ? "" : "s"}.` : "";
+    if (!confirm(`Excluir a tag "${t.nome}"?${aviso}`)) return;
+    await api("/api/tags/" + t.id, {method: "DELETE"});
+    carregar();
+  });
 }
 
 function abrir(id = null) {
@@ -178,6 +223,7 @@ function abrir(id = null) {
   const c = contatos.find(x => x.id === id) || {};
   $("titulo").textContent = id ? "Editar contato" : "Adicionar contato";
   for (const k of ["nome","sobrenome","email","numero","observacoes"]) $(k).value = c[k] || "";
+  $("numero").value = formatarNumero(c.numero);
   renderCheckboxesTags(c.tags || "");
   $("fundo").classList.add("aberto");
   $("nome").focus();
@@ -200,6 +246,28 @@ $("fechar-tags").onclick = () => $("fundo-tags").classList.remove("aberto");
 
 $("busca").oninput = desenhar;
 
+/* número formatado enquanto digita */
+$("numero").addEventListener("input", (e) => { e.target.value = formatarNumero(e.target.value); });
+
+/* Teclado no formulário do contato: Enter pula para o próximo campo,
+   Ctrl+Enter salva (inclusive de dentro das observações). */
+$("form").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  if (e.ctrlKey || e.metaKey) { e.preventDefault(); $("form").requestSubmit(); return; }
+  const el = e.target;
+  if (el.tagName === "TEXTAREA" || el.tagName === "BUTTON") return;   // Enter normal
+  e.preventDefault();
+  const campos = [...$("form").querySelectorAll("input, textarea, button[type=submit]")];
+  const prox = campos[campos.indexOf(el) + 1];
+  if (prox) prox.focus();
+});
+
+/* Esc fecha qualquer janela aberta */
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  document.querySelectorAll(".fundo.aberto").forEach(f => f.classList.remove("aberto"));
+});
+
 $("form").onsubmit = async (e) => {
   e.preventDefault();
   const selecionadas = Array.from(document.querySelectorAll('input[name="tag-select"]:checked')).map(cb => cb.value);
@@ -216,10 +284,10 @@ $("form").onsubmit = async (e) => {
 $("form-criar-tag").onsubmit = async (e) => {
   e.preventDefault();
   const nome = $("nova-tag-nome").value;
-  const tipo = $("nova-tag-tipo").value;
-  const r = await api("/api/tags", {method: "POST", body: JSON.stringify({nome, tipo})});
+  const r = await api("/api/tags", {method: "POST", body: JSON.stringify({nome, cor: corNova})});
   if (r && r.erro) { alert(r.erro); return; }
   $("nova-tag-nome").value = "";
+  corNova = PALETA[(tags.length + 1) % PALETA.length];  // sugere a próxima cor
   carregar();
 };
 

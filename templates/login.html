@@ -3,25 +3,42 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CRM · Entrar</title>
+  <title>Entrar · HidroMonitor CRM</title>
+  <link rel="icon" href="{{ url_for('static', filename='logoHidromonitor.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
   <div class="login-pag">
-    <form class="login" method="post">
-      <div class="logo">CRM<span>.</span></div>
-      <p>Entre para acessar seus contatos.</p>
-      {% if erro %}<div class="erro">{{ erro }}</div>{% endif %}
-      <div class="campo">
-        <label for="usuario">Usuário</label>
-        <input id="usuario" name="usuario" autofocus required>
+
+    <aside class="login-marca">
+      <div class="login-logo">
+        <img src="{{ url_for('static', filename='logoHidromonitor.png') }}" alt="HidroMonitor">
       </div>
-      <div class="campo">
-        <label for="senha">Senha</label>
-        <input id="senha" name="senha" type="password" required>
+      <div class="logo-text">
+        <span class="brand-hidro">Hidro</span><span class="brand-monitor">Monitor</span><span class="brand-dot">•</span><span class="brand-crm">CRM</span>
       </div>
-      <button class="btn azul" type="submit">Entrar</button>
-    </form>
+      <p>V1.0</p>
+    </aside>
+
+    <main class="login-form">
+      <form class="login" method="post" autocomplete="on">
+        <h1>Entrar</h1>
+        <p class="sub-login">Acesse o painel com seu usuário e senha.</p>
+
+        {% if erro %}<div class="erro" role="alert">{{ erro }}</div>{% endif %}
+
+        <div class="campo">
+          <label for="usuario">Usuário</label>
+          <input id="usuario" name="usuario" autocomplete="username" autofocus required>
+        </div>
+        <div class="campo">
+          <label for="senha">Senha</label>
+          <input id="senha" name="senha" type="password" autocomplete="current-password" required>
+        </div>
+        <button class="btn azul" type="submit">Entrar</button>
+      </form>
+    </main>
+
   </div>
 </body>
 </html>
