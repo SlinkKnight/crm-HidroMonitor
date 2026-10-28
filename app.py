@@ -82,10 +82,30 @@ def gravar_tags(linhas):
     os.replace(tmp, TAGS_PATH)
 
 
+def espacos(valor):
+    """Tira espaços das pontas, junta espaços repetidos (inclui tab, quebra de linha,
+    espaço sem quebra e caracteres invisíveis) em um só."""
+    valor = re.sub(r"[​‌‍⁠﻿]", "", str(valor or ""))
+    return re.sub(r"\s+", " ", valor).strip()
+
+
 def nome_tag(valor):
     """Nome limpo. Vírgula e ponto e vírgula saem, porque a vírgula separa as tags no CSV."""
-    valor = re.sub(r"[,;]", " ", str(valor or ""))
-    return re.sub(r"\s+", " ", valor).strip()[:40]
+    return espacos(re.sub(r"[,;]", " ", str(valor or "")))[:40]
+
+
+def campo_limpo(chave, valor):
+    """Normaliza um campo de contato."""
+    if chave == "email":                       # e-mail não tem espaço nenhum
+        return re.sub(r"\s+", "", espacos(valor)).lower()
+    if chave == "observacoes":                 # mantém quebras de linha, limpa cada linha
+        texto = re.sub(r"[​‌‍⁠﻿]", "", str(valor or ""))
+        linhas = [re.sub(r"[ \t ]+", " ", l).strip()
+                  for l in texto.replace("\r\n", "\n").replace("\r", "\n").split("\n")]
+        return "\n".join(linhas).strip()
+    if chave == "tags":
+        return ",".join(lista_tags(valor))
+    return espacos(valor)                      # nome, sobrenome, numero
 
 
 def lista_tags(valor):
@@ -102,16 +122,27 @@ def lista_tags(valor):
     return saida
 
 
-def limpar_contato(dados):
+def limpar_contato(dados, parcial=False):
+    """Normaliza os campos recebidos. parcial=True (PUT/PATCH) só exige nome se ele vier."""
+    if not hasattr(dados, "get"):
+        return None, "Corpo da requisição inválido"
     out = {}
-    for c in ["nome", "sobrenome", "email", "numero", "observacoes"]:
+    for c in ["nome", "sobrenome", "email", "numero", "observacoes", "tags"]:
         if c in dados:
-            out[c] = str(dados.get(c) or "").strip()
-    if "tags" in dados:
-        out["tags"] = ",".join(lista_tags(dados.get("tags")))
-    if not out.get("nome"):
+            out[c] = campo_limpo(c, dados.get(c))
+    if (not parcial or "nome" in out) and not out.get("nome"):
         return None, "Campo obrigatório: nome"
     return out, None
+
+
+def limpar_dados_antigos():
+    """Roda na subida: normaliza contatos já salvos (espaços sobrando etc.)."""
+    contatos = ler_contatos()
+    novos = [{**c, **{k: campo_limpo(k, c.get(k)) for k in
+                      ["nome", "sobrenome", "email", "numero", "observacoes", "tags"]}}
+             for c in contatos]
+    if novos != contatos:
+        gravar_contatos(novos)
 
 
 # ---------------------------------------------------------------- auth
@@ -157,7 +188,7 @@ def index():
 @app.get("/api/contatos")
 def listar_contatos():
     itens = ler_contatos()
-    q = (request.args.get("q") or "").lower()
+    q = espacos(request.args.get("q")).lower()
 
     if q:
         itens = [i for i in itens if q in " ".join(i.values()).lower()]
@@ -191,7 +222,7 @@ def criar_contato():
 
 @app.route("/api/contatos/<cid>", methods=["PUT", "PATCH"])
 def atualizar_contato(cid):
-    dados, erro = limpar_contato(request.get_json(silent=True) or request.form)
+    dados, erro = limpar_contato(request.get_json(silent=True) or request.form, parcial=True)
     if erro:
         return jsonify(erro=erro), 400
     with lock:
@@ -297,6 +328,7 @@ def exportar():
 
 
 init_csv()  # cria/migra os arquivos também quando rodando via gunicorn
+limpar_dados_antigos()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)

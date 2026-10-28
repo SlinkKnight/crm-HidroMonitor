@@ -249,6 +249,14 @@ $("busca").oninput = desenhar;
 /* número formatado enquanto digita */
 $("numero").addEventListener("input", (e) => { e.target.value = formatarNumero(e.target.value); });
 
+/* limpa espaços ao sair do campo (o servidor também limpa) */
+for (const k of ["nome", "sobrenome", "email"]) {
+  $(k).addEventListener("blur", (e) => {
+    const v = e.target.value.replace(/[​-‍⁠﻿]/g, "").replace(/\s+/g, k === "email" ? "" : " ").trim();
+    e.target.value = k === "email" ? v.toLowerCase() : v;
+  });
+}
+
 /* Teclado no formulário do contato: Enter pula para o próximo campo,
    Ctrl+Enter salva (inclusive de dentro das observações). */
 $("form").addEventListener("keydown", (e) => {
