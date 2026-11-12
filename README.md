@@ -1,4 +1,4 @@
-# HidroMonitor • CRM
+ HidroMonitor • CRM
 
 Painel de contatos em Flask, com os dados guardados em arquivos CSV e empacotado em Docker para rodar no servidor local.
 
@@ -9,6 +9,7 @@ Painel de contatos em Flask, com os dados guardados em arquivos CSV e empacotado
 - [Uso do painel](#uso-do-painel)
 - [Marca e fonte](#marca-e-fonte)
 - [API](#api)
+- [Rodando na AWS](#rodando-na-aws-ecs-fargate--efs)
 - [Notas de mudanças](#notas-de-mudanças)
 - [Segurança](#segurança)
 
@@ -27,11 +28,24 @@ Login padrão: `admin` / `admin123`. A senha é em texto plano, definida no `doc
 ```yaml
 environment:
   ADMIN_USER: admin
-  ADMIN_PASS: admin123
-  SECRET_KEY: crm-local-secret
+  ADMIN_PASS: troque-esta-senha
+  SECRET_KEY: um-texto-longo-e-aleatorio
+  API_KEY: outra-chave-longa-e-aleatoria
 volumes:
   - ./data:/data
 ```
+
+### Variáveis de ambiente
+
+| Variável | Padrão | Para que serve |
+|---|---|---|
+| `ADMIN_USER` | `admin` | Usuário do painel |
+| `ADMIN_PASS` | `admin123` | Senha do painel. **Troque.** O app avisa no log se continuar no padrão |
+| `SECRET_KEY` | valor fixo | Assina o cookie de sessão. **Troque** por um texto longo e aleatório |
+| `API_KEY` | vazia | Chave para usar a API sem login (veja [API](#api)). Vazia = a API só responde a quem está logado no painel |
+| `COOKIE_SECURE` | `0` | `1` = o cookie de sessão só trafega por HTTPS. Use quando **todo** o acesso for por https; com `1`, o login por `http://` deixa de funcionar |
+| `TRUST_PROXY` | `0` | Quantos proxies ficam na frente do app (ALB, Tailscale...). Use `1` para o bloqueio de tentativas de login enxergar o IP real |
+| `DATA_DIR` | `/data` | Pasta dos CSV |
 
 Para atualizar arquivos do projeto, copie por cima e rode o comando acima de novo. Os dados em `./data` não são apagados.
 
@@ -161,7 +175,13 @@ A logo é `static/logoHidromonitor.png`.
 ## API
 
 - Base: `http://IP-DO-SERVIDOR:8080`
-- **Sem chave e sem login.** Veja [Segurança](#segurança).
+- **Autenticação obrigatória.** Toda rota `/api/*` exige **uma** destas:
+  - o cabeçalho `X-API-Key: <API_KEY>`;
+  - o cabeçalho `Authorization: Bearer <API_KEY>`;
+  - estar logado no painel (é o que o próprio painel usa).
+- A chave **não vale na URL** (`?key=` foi recusado de propósito: URLs ficam gravadas em logs e históricos).
+- Sem credencial válida, a resposta é `401` com `{"erro": "não autorizado"}`.
+- Se a variável `API_KEY` não estiver definida, só quem está logado no painel usa a API.
 - Envie e receba **JSON** (`Content-Type: application/json`). Formulário (`application/x-www-form-urlencoded`) também é aceito.
 - Erros voltam como `{"erro": "mensagem"}` com o status HTTP correspondente.
 - Todos os textos recebem a [limpeza automática](#limpeza-automática-dos-dados).
@@ -217,29 +237,35 @@ Cores válidas: `azul`, `ciano`, `ambar`, `verde`, `vermelho`, `roxo`, `teal`, `
 
 ### Exemplos
 
+Nos exemplos, `$API_KEY` é a sua chave (`export API_KEY=...`). No PowerShell:
+
+```powershell
+Invoke-RestMethod https://SEU-SERVIDOR/api/contatos -Headers @{ "X-API-Key" = $env:API_KEY }
+```
+
 ```bash
 # listar / buscar
-curl http://localhost:8080/api/contatos
-curl "http://localhost:8080/api/contatos?q=black%20friday"
+curl -H "X-API-Key: $API_KEY" http://localhost:8080/api/contatos
+curl -H "X-API-Key: $API_KEY" "http://localhost:8080/api/contatos?q=black%20friday"
 
 # criar a tag e depois o contato
-curl -X POST http://localhost:8080/api/tags \
+curl -H "X-API-Key: $API_KEY" -X POST http://localhost:8080/api/tags \
   -H "Content-Type: application/json" \
   -d '{"nome":"Black Friday 2026","cor":"ambar"}'
 
-curl -X POST http://localhost:8080/api/contatos \
+curl -H "X-API-Key: $API_KEY" -X POST http://localhost:8080/api/contatos \
   -H "Content-Type: application/json" \
   -d '{"nome":"Maria","sobrenome":"Silva","email":"maria@x.com",
        "numero":"51999990000","tags":["Black Friday 2026"],"observacoes":"Indicação"}'
 
 # alterar só o e-mail e as tags
-curl -X PATCH http://localhost:8080/api/contatos/a1b2c3d4 \
+curl -H "X-API-Key: $API_KEY" -X PATCH http://localhost:8080/api/contatos/a1b2c3d4 \
   -H "Content-Type: application/json" \
   -d '{"email":"novo@x.com","tags":"Cliente,Black Friday 2026"}'
 
 # trocar a cor de uma tag / apagar uma tag
-curl -X PUT http://localhost:8080/api/tags/t1a2b3c -H "Content-Type: application/json" -d '{"cor":"roxo"}'
-curl -X DELETE http://localhost:8080/api/tags/t1a2b3c
+curl -H "X-API-Key: $API_KEY" -X PUT http://localhost:8080/api/tags/t1a2b3c -H "Content-Type: application/json" -d '{"cor":"roxo"}'
+curl -H "X-API-Key: $API_KEY" -X DELETE http://localhost:8080/api/tags/t1a2b3c
 ```
 
 ### Códigos de resposta
@@ -249,6 +275,7 @@ curl -X DELETE http://localhost:8080/api/tags/t1a2b3c
 | `200` | Sucesso (leitura, alteração, exclusão) |
 | `201` | Criado |
 | `400` | Dados inválidos (nome vazio, cor inválida, tag duplicada, corpo malformado) |
+| `401` | Sem credencial ou chave incorreta |
 | `404` | Contato ou tag não encontrado |
 
 ---
@@ -257,7 +284,27 @@ curl -X DELETE http://localhost:8080/api/tags/t1a2b3c
 
 Mudanças em relação às versões anteriores. Quem tem algum script ou integração usando a API deve ler a lista de itens que quebram compatibilidade.
 
-### Versão atual (28/10/2026)
+### Versão atual (12/11/2026)
+
+**API: autenticação obrigatória (muda a compatibilidade)**
+- Toda rota `/api/*` passa a exigir `X-API-Key: <chave>`, `Authorization: Bearer <chave>` ou login no painel. Sem credencial: `401`.
+- Nova variável `API_KEY`. Se não estiver definida, a API só responde a quem está logado.
+- A chave **não é aceita na URL** (`?key=`).
+- Scripts e integrações que chamam a API precisam enviar o cabeçalho. O `importar.ps1` já usa `$env:API_KEY`.
+
+**Login e sessão**
+- Bloqueio por 15 minutos após 5 tentativas erradas por IP (resposta `429` na página de login).
+- Comparação de senha em tempo constante; sessão expira em 12 h; cookie `HttpOnly` + `SameSite=Lax` (+ `Secure` com `COOKIE_SECURE=1`).
+- Novas variáveis `COOKIE_SECURE` e `TRUST_PROXY`.
+- Cabeçalhos de segurança e `Cache-Control: no-store`.
+- Avisos no log quando `ADMIN_PASS`/`SECRET_KEY` estão no padrão ou `API_KEY` está vazia.
+- O painel volta para a tela de login se a sessão expirar, em vez de quebrar.
+
+**AWS**
+- Scripts `configurar-efs.sh`, `definir-segredos.sh` e `enviar-dados.sh` (veja [Rodando na AWS](#rodando-na-aws-ecs-fargate--efs)).
+- O serviço precisa de `--availability-zone-rebalancing DISABLED` para usar `maximumPercent=100`.
+
+### Versão de 28/10/2026
 
 **API**
 - Texto de entrada limpo no servidor (espaços repetidos/das pontas, e-mail sem espaços e em minúsculo, tags sem repetição). Veja [Limpeza automática](#limpeza-automática-dos-dados).
@@ -294,7 +341,7 @@ Mudanças em relação às versões anteriores. Quem tem algum script ou integra
 
 ### Versões anteriores
 
-- **API sem chave:** o cabeçalho `X-API-Key` e o parâmetro `?key=` foram removidos. As rotas `/api/*` ficam abertas.
+- **API sem chave:** o cabeçalho `X-API-Key` e o parâmetro `?key=` foram removidos e as rotas `/api/*` ficaram abertas. *(Revertido em 12/11/2026: a chave voltou, só no cabeçalho.)*
 - **Marca:** logo e texto "HidroMonitor • CRM" no topo e na tela de login (reescrita, com painel da marca ao lado do formulário), com a fonte XXII Geom Bold.
 - **Acessibilidade e atalhos:** `Enter` pula de campo, `Ctrl+Enter` salva, `Esc` fecha janelas, foco visível nas tags. Telefone formatado ao digitar.
 - **Correção:** o caminho da logo usava barra invertida (`static\logo...`), que não funciona no Docker/Linux. Agora usa `url_for`.
@@ -302,9 +349,36 @@ Mudanças em relação às versões anteriores. Quem tem algum script ou integra
 
 ---
 
+## Rodando na AWS (ECS Fargate + EFS)
+
+Scripts para rodar no AWS CloudShell, nesta ordem:
+
+| Script | O que faz |
+|---|---|
+| `configurar-efs.sh` | Cria o EFS, o security group, os mount targets e o access point, e monta o volume em `/data` na task. Pode ser repetido sem duplicar nada |
+| `definir-segredos.sh` | Define `ADMIN_PASS`, `SECRET_KEY` e `API_KEY` na task (gera valores aleatórios e salva em `credenciais-crm.txt`). Aceita `IMAGE=...` para trocar a imagem |
+| `enviar-dados.sh` | Copia `contatos.csv` e `tags.csv` para dentro do EFS, mantendo ids e datas |
+| `importar.ps1` | (PowerShell, no seu computador) Importa tags e contatos pela API, com ids e datas novos. Usa `$env:API_KEY` |
+
+Pontos de atenção:
+- Deixe **1 task só** (`desiredCount: 1`) e `minimumHealthyPercent=0` / `maximumPercent=100`. O controle contra gravação simultânea vale só dentro de um container.
+- Com essa configuração o rebalanceamento de zonas precisa estar **desligado** (`--availability-zone-rebalancing DISABLED`).
+- `enviar-dados.sh` usa o ECS Exec. A role da task precisa das permissões `ssmmessages:CreateControlChannel`, `CreateDataChannel`, `OpenControlChannel` e `OpenDataChannel`.
+- Ao atualizar o código, reconstrua a imagem, envie ao ECR e atualize a imagem na task (`IMAGE=... bash definir-segredos.sh` faz isso).
+
+---
+
 ## Segurança
 
-- A **API não pede chave nem login**: qualquer máquina que alcance a porta 8080 consegue ler, alterar e apagar contatos e tags. Use apenas em rede local fechada.
-- A senha do painel é em texto plano e o tráfego é HTTP.
-- Não exponha a porta 8080 na internet. Se precisar, coloque um proxy com HTTPS e controle de acesso na frente.
-- Faça cópia periódica da pasta `./data`. É nela que está tudo.
+O que o sistema faz:
+- **API protegida:** exige chave (`X-API-Key`/`Bearer`) ou login. Sem `API_KEY` definida, só o painel logado acessa. A chave é comparada em tempo constante e não é aceita na URL.
+- **Login:** comparação de usuário e senha em tempo constante; **bloqueio de 15 minutos após 5 erros** por IP (em memória, zera ao reiniciar); sessão que expira em 12 horas; cookie `HttpOnly` e `SameSite=Lax` (e `Secure` com `COOKIE_SECURE=1`).
+- **Cabeçalhos:** `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` e `Cache-Control: no-store` nas páginas e na API.
+- **Avisos no log** quando `ADMIN_PASS`, `SECRET_KEY` ou `API_KEY` não foram definidas.
+
+O que **não** está coberto, e depende de você:
+- **HTTPS.** O app fala HTTP. Garanta que o acesso passe por HTTPS (Tailscale, ALB com certificado) e ligue `COOKIE_SECURE=1`.
+- **Rede.** Restrinja o security group da porta 8080 a quem precisa (seu IP, rede do Tailscale) ou desligue o IP público. É a defesa mais forte, porque quem não alcança a porta não consegue nem tentar.
+- **Segredos na task.** As variáveis ficam em texto na task definition, visíveis a quem tem permissão de leitura no ECS. Para algo mais rígido, use o Secrets Manager.
+- **Senha única.** Existe um só usuário. Quem tem a senha tem acesso total.
+- **Backup.** Faça cópia periódica da pasta `./data` (no EFS, use o AWS Backup).

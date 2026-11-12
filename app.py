@@ -1,18 +1,29 @@
 import csv
+import hmac
 import os
 import re
+import sys
 import threading
+import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 
 from flask import (Flask, jsonify, redirect, render_template, request,
                    session, url_for)
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 # ---------------------------------------------------------------- config
 ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
 ADMIN_PASS = os.environ.get("ADMIN_PASS", "admin123")
 SECRET_KEY = os.environ.get("SECRET_KEY", "crm-local-secret")
+# Chave para chamar /api/* sem estar logado. Se vazia, a API só responde a quem fez login.
+API_KEY = os.environ.get("API_KEY", "")
+# 1 = o cookie de sessão só trafega por HTTPS (use quando todo acesso for por https)
+COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "0") == "1"
+# Quantos proxies/balanceadores ficam na frente do app (ALB, Tailscale...). 0 = nenhum.
+# Necessário para o limite de tentativas enxergar o IP real de quem acessa.
+TRUST_PROXY = int(os.environ.get("TRUST_PROXY", "0") or 0)
 DATA_DIR = os.environ.get("DATA_DIR", "/data")
 CSV_PATH = os.path.join(DATA_DIR, "contatos.csv")
 TAGS_PATH = os.path.join(DATA_DIR, "tags.csv")
@@ -26,7 +37,23 @@ PALETA = ["azul", "ciano", "ambar", "verde", "vermelho", "roxo", "teal", "cinza"
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=COOKIE_SECURE,
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
+)
+if TRUST_PROXY:
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=TRUST_PROXY)
 lock = threading.Lock()
+
+# avisos no log (CloudWatch) quando a configuração está insegura
+if ADMIN_PASS == "admin123":
+    print("AVISO: ADMIN_PASS está no valor padrão (admin123). Defina uma senha própria.", file=sys.stderr)
+if SECRET_KEY == "crm-local-secret":
+    print("AVISO: SECRET_KEY está no valor padrão. Defina um valor secreto.", file=sys.stderr)
+if not API_KEY:
+    print("AVISO: API_KEY não definida. A API só responde a quem fez login no painel.", file=sys.stderr)
 
 
 # ---------------------------------------------------------------- CSV Helpers
@@ -150,6 +177,24 @@ def logado():
     return session.get("ok") is True
 
 
+def igual(a, b):
+    """Comparação em tempo constante (não vaza, pelo tempo de resposta, quantos caracteres acertou)."""
+    return hmac.compare_digest(str(a or "").encode("utf-8"), str(b or "").encode("utf-8"))
+
+
+def chave_valida():
+    """Aceita a chave no cabeçalho X-API-Key ou em Authorization: Bearer <chave>.
+    Não aceita na URL (?key=), porque URLs ficam gravadas em logs e históricos."""
+    if not API_KEY:
+        return False
+    enviada = request.headers.get("X-API-Key", "")
+    if not enviada:
+        auth = request.headers.get("Authorization", "")
+        if auth.lower().startswith("bearer "):
+            enviada = auth[7:].strip()
+    return bool(enviada) and igual(enviada, API_KEY)
+
+
 def precisa_login(f):
     @wraps(f)
     def w(*a, **k):
@@ -159,15 +204,60 @@ def precisa_login(f):
     return w
 
 
+@app.before_request
+def proteger_api():
+    """Toda rota /api/* exige login no painel OU a chave da API."""
+    if request.path.startswith("/api/") and not (logado() or chave_valida()):
+        return jsonify(erro="não autorizado"), 401
+
+
+@app.after_request
+def cabecalhos_de_seguranca(resp):
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("X-Frame-Options", "DENY")
+    resp.headers.setdefault("Referrer-Policy", "same-origin")
+    if request.path.startswith("/api/") or request.path in ("/", "/login"):
+        resp.headers.setdefault("Cache-Control", "no-store")
+    return resp
+
+
+# limite de tentativas de login: 5 erros por IP em 15 minutos (memória; o app roda com 1 worker)
+MAX_FALHAS = 5
+JANELA_FALHAS = 15 * 60
+falhas = {}
+
+
+def segundos_de_bloqueio(ip):
+    agora = time.time()
+    recentes = [t for t in falhas.get(ip, []) if agora - t < JANELA_FALHAS]
+    if recentes:
+        falhas[ip] = recentes
+    else:
+        falhas.pop(ip, None)
+    if len(recentes) >= MAX_FALHAS:
+        return int(JANELA_FALHAS - (agora - recentes[0])) + 1
+    return 0
+
+
 # ---------------------------------------------------------------- Páginas
 @app.route("/login", methods=["GET", "POST"])
 def login():
     erro = None
     if request.method == "POST":
-        if (request.form.get("usuario") == ADMIN_USER
-                and request.form.get("senha") == ADMIN_PASS):
+        ip = request.remote_addr or "?"
+        espera = segundos_de_bloqueio(ip)
+        if espera:
+            minutos = max(1, round(espera / 60))
+            erro = f"Muitas tentativas. Tente de novo em {minutos} min."
+            return render_template("login.html", erro=erro), 429
+        # "&" (e não "and") para sempre comparar os dois campos
+        if igual(request.form.get("usuario"), ADMIN_USER) & igual(request.form.get("senha"), ADMIN_PASS):
+            falhas.pop(ip, None)
+            session.clear()
             session["ok"] = True
+            session.permanent = True      # expira em 12 h
             return redirect(url_for("index"))
+        falhas.setdefault(ip, []).append(time.time())
         erro = "Usuário ou senha incorretos."
     return render_template("login.html", erro=erro)
 
@@ -184,7 +274,7 @@ def index():
     return render_template("index.html", paleta=PALETA)
 
 
-# ---------------------------------------------------------------- API (Sem verificação de chave)
+# ---------------------------------------------------------------- API (protegida em proteger_api)
 @app.get("/api/contatos")
 def listar_contatos():
     itens = ler_contatos()

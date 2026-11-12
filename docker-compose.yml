@@ -1,13 +1,16 @@
 services:
   crm:
     build: .
-    container_name: crm
+    container_name: hidromonitor-crm
     restart: unless-stopped
     ports:
-      - "7070:8080"
+      - "8080:8080"
     environment:
       ADMIN_USER: admin
-      ADMIN_PASS: admin123          # troque a senha aqui
-      SECRET_KEY: crm-local-secret
+      ADMIN_PASS: troque-esta-senha            # troque a senha aqui
+      SECRET_KEY: troque-por-um-texto-longo    # assina o cookie de sessão
+      API_KEY: troque-por-uma-chave-longa      # chave para usar a API sem login
+      # COOKIE_SECURE: "1"                     # ligue se TODO acesso for por https
+      # TRUST_PROXY: "1"                       # nº de proxies na frente (ALB, Tailscale)
     volumes:
-      - ./data:/data                # /data/hidromonitor:/data
+      - ./data:/data                # contatos.csv e tags.csv ficam em ./data

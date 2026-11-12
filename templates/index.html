@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>HidroMonitor · CRM</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='logoHidromonitor.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='logoHidromonitor.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
@@ -104,6 +106,7 @@ async function api(url, opt = {}) {
   const r = await fetch(url, {
     headers: {"Content-Type": "application/json"}, ...opt
   });
+  if (r.status === 401) { location.href = "/login"; return new Promise(() => {}); }  // sessão expirou
   return r.json();
 }
 
